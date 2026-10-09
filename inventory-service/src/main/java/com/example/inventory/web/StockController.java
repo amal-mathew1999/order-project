@@ -1,10 +1,12 @@
 package com.example.inventory.web;
 
 import com.example.inventory.dto.AvailabilityResponse;
+import com.example.inventory.dto.ReleaseRequest;
 import com.example.inventory.dto.ReservationResponse;
 import com.example.inventory.dto.StockRequest;
 import com.example.inventory.service.StockService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,18 +21,18 @@ public class StockController {
     }
 
     @GetMapping("/{productId}/availability")
-    public AvailabilityResponse availability(@PathVariable Long productId, @RequestParam int quantity) {
+    public AvailabilityResponse availability(@PathVariable Long productId, @RequestParam @Min(1) int quantity) {
         return service.checkAvailability(productId, quantity);
     }
 
     @PostMapping("/reservations")
     public ReservationResponse reserve(@Valid @RequestBody StockRequest request) {
-        return service.reserve(request.productId(), request.quantity());
+        return service.reserve(request.orderId(), request.productId(), request.quantity());
     }
 
     @PostMapping("/releases")
-    public ResponseEntity<Void> release(@Valid @RequestBody StockRequest request) {
-        service.release(request.productId(), request.quantity());
+    public ResponseEntity<Void> release(@Valid @RequestBody ReleaseRequest request) {
+        service.release(request.orderId());
         return ResponseEntity.noContent().build();
     }
 }

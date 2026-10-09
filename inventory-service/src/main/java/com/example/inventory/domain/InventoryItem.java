@@ -20,7 +20,7 @@ public class InventoryItem {
     @Column(nullable = false)
     private Integer availableQuantity;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal unitPrice;
 
     public Long getId() { return id; }
