@@ -14,11 +14,15 @@ public class Payment {
     @Column(nullable = false)
     private Long orderId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
 
     @Column(nullable = false)
     private String status;
+
+    /** Set to orderId only when status is SUCCESS; the unique constraint allows one SUCCESS per order. */
+    @Column(unique = true)
+    private Long successOrderId;
 
     public Long getId() { return id; }
 
@@ -30,4 +34,7 @@ public class Payment {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public Long getSuccessOrderId() { return successOrderId; }
+    public void setSuccessOrderId(Long successOrderId) { this.successOrderId = successOrderId; }
 }
