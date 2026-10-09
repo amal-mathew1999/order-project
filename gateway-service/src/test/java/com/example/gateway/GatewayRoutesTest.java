@@ -12,7 +12,7 @@ import org.springframework.cloud.gateway.server.mvc.config.GatewayMvcProperties;
 import org.springframework.cloud.gateway.server.mvc.config.RouteProperties;
 
 // The test application.yml shadows the main one, so import the routes file explicitly.
-@SpringBootTest(properties = "spring.config.import=classpath:gateway-routes.yml")
+@SpringBootTest
 class GatewayRoutesTest {
 
 	private final GatewayMvcProperties properties;
