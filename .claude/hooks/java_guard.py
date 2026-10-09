@@ -74,7 +74,8 @@ def main():
     # service = folder holding src/main|src/test (may be nested, e.g. .claude/worktrees/<agent>/order-service)
     i = next((k for k in range(len(rel or ()) - 1) if rel[k] == "src" and rel[k + 1] in ("main", "test")), None)
     service = Path(*rel[:i]) if i else None
-    if service:
+    in_worktree = rel is not None and rel[:2] == (".claude", "worktrees")
+    if service and not in_worktree:  # worktree agents build their own copy; the gate covers the main checkout only
         with (root / ".claude" / ".dirty").open("a", encoding="utf-8") as f:
             f.write(service.as_posix() + "\n")
     is_test = rel[i + 1] == "test" if i is not None else "/src/test/" in p.as_posix()

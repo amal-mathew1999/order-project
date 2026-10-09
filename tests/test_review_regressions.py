@@ -261,7 +261,10 @@ def test_nested_service_paths_detect_tests_and_service(project):
     rel = ".claude/worktrees/agent-1/order-service/src/test/java/FooTest.java"
     r = guard_file(project, rel, "class FooTest { @Autowired MockMvc mvc; }")
     assert r.returncode == 0, r.stderr  # test source under a worktree: field injection allowed
-    assert (project / ".claude/.dirty").read_text().splitlines() == [".claude/worktrees/agent-1/order-service"]
+    # worktree agents own their builds; the main session's Stop gate must not build their in-progress copies
+    assert not (project / ".claude/.dirty").exists()
+    r = guard_file(project, "repo/order-service/src/main/java/Foo.java", "class Foo {}")
+    assert (project / ".claude/.dirty").read_text().splitlines() == ["repo/order-service"]
 
 
 def test_gate_builds_nested_service_paths(project):
