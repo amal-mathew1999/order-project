@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/.claude/worktrees/agent-a058a3543afa31521/discovery-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/.claude/worktrees/agent-a9cc4753180a4df91/order-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/.claude/worktrees/agent-ab4302eb43777d39d/payment-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/.claude/worktrees/agent-ae7369b823f99bc3e/gateway-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/.claude/worktrees/agent-af2bfadaaeb75b5cf/inventory-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/discovery-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/gateway-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/inventory-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/order-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/payment-service/src/main/java" charset="UTF-8" />
+  </component>
+</project>

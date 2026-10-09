@@ -14,6 +14,9 @@ def test_generated_service_builds_and_gate_catches_breakage(project):
     yml = (svc / "src/main/resources/application.yml").read_text()
     assert "port: 8081" in yml and "open-in-view: false" in yml and "jdbc:mysql://" in yml
     assert not (svc / "src/main/resources/application.properties").exists()
+    # test overrides must not shadow the main yml (a test application.yml would)
+    assert (svc / "src/test/resources/application.properties").exists()
+    assert not (svc / "src/test/resources/application.yml").exists()
 
     r = run_script(project, GEN_RESOURCE, "shop-service", "Order",
                    "customerId:Long,note:String,total:BigDecimal,paid:Boolean,due:LocalDate,at:Instant,value:Integer,year:Integer")

@@ -12,6 +12,8 @@ Checklist:
 - **Transactions**: writes `@Transactional`; no remote calls inside a DB transaction; no lazy-loading outside a transaction (open-in-view is off).
 - **API**: DTO records only, `@Valid` on bodies, versioned `/api/v1` paths, errors via `GlobalExceptionHandler`/ProblemDetail.
 - **Microservice boundaries**: no shared tables or JPA relations across services; cross-service calls have timeouts and handle failures; IDs, not entities, cross the boundary.
+- **Schema evolution**: enums stored as VARCHAR (not native ENUM); new columns nullable or defaulted for existing rows; unique constraints for idempotency keys.
+- **Distributed failure modes**: what happens on timeout after the remote side committed? on a crash between two writes? Is every compensation idempotent and retried, and do internal endpoints stay off the gateway?
 - **Security**: no secrets in code or yml, no SQL string concatenation, no sensitive data in logs.
 - **Performance**: no N+1 queries, paged list endpoints, no unbounded `findAll()`.
 - **Tests**: every new rule has a test; tests assert behaviour, not implementation.

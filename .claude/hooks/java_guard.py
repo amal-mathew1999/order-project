@@ -71,10 +71,14 @@ def main():
         rel = p.resolve().relative_to(root).parts
     except ValueError:
         rel = None
-    if rel and len(rel) > 1:
+    # service = folder holding src/main|src/test (may be nested, e.g. .claude/worktrees/<agent>/order-service)
+    i = next((k for k in range(len(rel or ()) - 1) if rel[k] == "src" and rel[k + 1] in ("main", "test")), None)
+    service = Path(*rel[:i]) if i else None
+    in_worktree = rel is not None and rel[:2] == (".claude", "worktrees")
+    if service and not in_worktree:  # worktree agents build their own copy; the gate covers the main checkout only
         with (root / ".claude" / ".dirty").open("a", encoding="utf-8") as f:
-            f.write(rel[0] + "\n")
-    is_test = rel[1:3] == ("src", "test") if rel else "/src/test/" in p.as_posix()
+            f.write(service.as_posix() + "\n")
+    is_test = rel[i + 1] == "test" if i is not None else "/src/test/" in p.as_posix()
 
     src = p.read_text(encoding="utf-8")
     no_comments = strip(src, strings=False)
@@ -87,8 +91,8 @@ def main():
     problems += [msg for rx, msg in STRUCTURAL if rx.search(code)]
     if secrets(no_comments):
         problems.append("hard-coded secret: use config/env")
-    if not is_test and rel and re.search(r"@(Rest)?Controller\b", code) \
-            and imports_entity(code, root / rel[0] / "src" / "main" / "java"):
+    if not is_test and service and re.search(r"@(Rest)?Controller\b", code) \
+            and imports_entity(code, root / service / "src" / "main" / "java"):
         problems.append("controller imports a JPA entity: expose DTO records only")
 
     if problems:

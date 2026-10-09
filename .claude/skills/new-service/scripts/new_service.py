@@ -52,14 +52,16 @@ def application_yml(name, short, port, deps):
     return y
 
 
-def test_yml(short, deps):
-    y = ""
+def test_properties(short, deps):
+    """Test overrides. Must be .properties: a test application.yml would shadow the main one entirely,
+    while application.properties loads alongside it and wins on conflicts."""
+    lines = []
     if "data-jpa" in deps and "mysql" in deps:
-        y += (f"spring:\n  datasource:\n    url: jdbc:h2:mem:{short};MODE=MySQL;DB_CLOSE_DELAY=-1\n"
-              "    username: sa\n    password: \"\"\n")
-    if "cloud-eureka" in deps or "cloud-eureka-server" in deps:
-        y += "eureka:\n  client:\n    enabled: false\n"
-    return y
+        lines += [f"spring.datasource.url=jdbc:h2:mem:{short};MODE=MySQL;DB_CLOSE_DELAY=-1",
+                  "spring.datasource.username=sa", "spring.datasource.password="]
+    if "cloud-eureka" in deps and "cloud-eureka-server" not in deps:
+        lines.append("eureka.client.enabled=false")  # the server needs its client beans; its main yml is standalone
+    return "".join(l + "\n" for l in lines)
 
 
 def add_test_h2(pom):
@@ -69,7 +71,7 @@ def add_test_h2(pom):
     pom.write_text(text.replace("<dependencies>", dep, 1), encoding="utf-8")
 
 
-def exception_classes(base, pkg):
+def exception_classes(base, pkg, jpa):
     write(base / "common/NotFoundException.java", f"""package {pkg}.common;
 
 public class NotFoundException extends RuntimeException {{
@@ -78,11 +80,20 @@ public class NotFoundException extends RuntimeException {{
     }}
 }}
 """)
+    jpa_import = "import org.springframework.dao.DataIntegrityViolationException;\n" if jpa else ""
+    jpa_handler = """
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ProblemDetail conflict(DataIntegrityViolationException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Request conflicts with existing data");
+    }
+""" if jpa else ""
     write(base / "common/GlobalExceptionHandler.java", f"""package {pkg}.common;
 
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.springframework.http.HttpHeaders;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+{jpa_import}import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
@@ -93,13 +104,21 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/** Every error response is an RFC 7807 ProblemDetail (bad JSON, type mismatch, method validation included). */
+/** Every error response is an RFC 7807 ProblemDetail (bad JSON, type mismatch, method validation, 500s included). */
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {{
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(NotFoundException.class)
     ProblemDetail notFound(NotFoundException ex) {{
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }}
+{jpa_handler}
+    @ExceptionHandler(Exception.class)
+    ProblemDetail unexpected(Exception ex) {{
+        log.error("Unhandled exception", ex);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error");
     }}
 
     @Override
@@ -153,12 +172,12 @@ def main():
         res = work / "src/main/resources"
         (res / "application.properties").unlink(missing_ok=True)
         write(res / "application.yml", application_yml(a.name, short, port, deps))
-        if t := test_yml(short, deps):
-            write(work / "src/test/resources/application.yml", t)
+        if t := test_properties(short, deps):
+            write(work / "src/test/resources/application.properties", t)
         if "data-jpa" in deps and "mysql" in deps:
             add_test_h2(work / "pom.xml")
         if "web" in deps:
-            exception_classes(work / "src/main/java" / Path(*pkg.split(".")), pkg)
+            exception_classes(work / "src/main/java" / Path(*pkg.split(".")), pkg, "data-jpa" in deps)
         shutil.move(str(work), str(target))
 
     with (ROOT / ".claude" / ".dirty").open("a", encoding="utf-8") as f:
