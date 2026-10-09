@@ -55,7 +55,8 @@ def main():
 
     if not dirty.exists():
         return 0
-    services = sorted({s for s in dirty.read_text(encoding="utf-8").split() if (root / s / "pom.xml").exists()})
+    entries = {s.strip() for s in dirty.read_text(encoding="utf-8").splitlines()}  # one path per line; may contain spaces
+    services = sorted(s for s in entries if s and (root / s / "pom.xml").exists())
     if not services:
         dirty.unlink()
         return 0

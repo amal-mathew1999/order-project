@@ -240,10 +240,12 @@ def test_yml_for_each_service_kind(project):
     assert "jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/order_db" in biz
     assert "${DB_PASSWORD:}" in biz and "defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}" in biz
     assert "open-in-view: false" in biz
-    test = m.test_yml("order", m.DEFAULT_DEPS.split(","))
-    assert "jdbc:h2:mem:order;MODE=MySQL" in test and "enabled: false" in test
+    test = m.test_properties("order", m.DEFAULT_DEPS.split(","))
+    assert "spring.datasource.url=jdbc:h2:mem:order;MODE=MySQL" in test and "eureka.client.enabled=false" in test
     eureka = m.application_yml("discovery-service", "discovery", 8761, ["cloud-eureka-server", "actuator"])
     assert "register-with-eureka: false" in eureka and "datasource" not in eureka
+    # disabling the Eureka client breaks the server's own context, so the server gets no test override
+    assert m.test_properties("discovery", ["cloud-eureka-server", "actuator"]) == ""
 
 
 def test_network_error_is_clean_and_leaves_nothing(project, monkeypatch):
@@ -253,3 +255,17 @@ def test_network_error_is_clean_and_leaves_nothing(project, monkeypatch):
                        capture_output=True, text=True, timeout=120)
     assert r.returncode != 0 and "Traceback" not in r.stderr and "start.spring.io" in r.stderr
     assert not (project / "net-service").exists()
+
+
+def test_nested_service_paths_detect_tests_and_service(project):
+    rel = ".claude/worktrees/agent-1/order-service/src/test/java/FooTest.java"
+    r = guard_file(project, rel, "class FooTest { @Autowired MockMvc mvc; }")
+    assert r.returncode == 0, r.stderr  # test source under a worktree: field injection allowed
+    assert (project / ".claude/.dirty").read_text().splitlines() == [".claude/worktrees/agent-1/order-service"]
+
+
+def test_gate_builds_nested_service_paths(project):
+    fake_maven(project, "nested dir/bad-service", 1, MAVEN_FAIL)
+    mark_dirty(project, "nested dir/bad-service")
+    r = gate(project)
+    assert r.returncode == 2 and "[nested dir/bad-service]" in r.stderr

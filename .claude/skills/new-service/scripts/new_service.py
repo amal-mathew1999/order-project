@@ -52,14 +52,16 @@ def application_yml(name, short, port, deps):
     return y
 
 
-def test_yml(short, deps):
-    y = ""
+def test_properties(short, deps):
+    """Test overrides. Must be .properties: a test application.yml would shadow the main one entirely,
+    while application.properties loads alongside it and wins on conflicts."""
+    lines = []
     if "data-jpa" in deps and "mysql" in deps:
-        y += (f"spring:\n  datasource:\n    url: jdbc:h2:mem:{short};MODE=MySQL;DB_CLOSE_DELAY=-1\n"
-              "    username: sa\n    password: \"\"\n")
-    if "cloud-eureka" in deps or "cloud-eureka-server" in deps:
-        y += "eureka:\n  client:\n    enabled: false\n"
-    return y
+        lines += [f"spring.datasource.url=jdbc:h2:mem:{short};MODE=MySQL;DB_CLOSE_DELAY=-1",
+                  "spring.datasource.username=sa", "spring.datasource.password="]
+    if "cloud-eureka" in deps and "cloud-eureka-server" not in deps:
+        lines.append("eureka.client.enabled=false")  # the server needs its client beans; its main yml is standalone
+    return "".join(l + "\n" for l in lines)
 
 
 def add_test_h2(pom):
@@ -153,8 +155,8 @@ def main():
         res = work / "src/main/resources"
         (res / "application.properties").unlink(missing_ok=True)
         write(res / "application.yml", application_yml(a.name, short, port, deps))
-        if t := test_yml(short, deps):
-            write(work / "src/test/resources/application.yml", t)
+        if t := test_properties(short, deps):
+            write(work / "src/test/resources/application.properties", t)
         if "data-jpa" in deps and "mysql" in deps:
             add_test_h2(work / "pom.xml")
         if "web" in deps:
