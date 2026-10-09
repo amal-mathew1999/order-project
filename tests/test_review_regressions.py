@@ -269,3 +269,20 @@ def test_gate_builds_nested_service_paths(project):
     mark_dirty(project, "nested dir/bad-service")
     r = gate(project)
     assert r.returncode == 2 and "[nested dir/bad-service]" in r.stderr
+
+
+def test_exception_handler_has_500_fallback_and_jpa_conflict(project):
+    m = load_module(project, NEW_SERVICE)
+    for jpa in (True, False):
+        base = project / f"h{jpa}"
+        m.exception_classes(base, "com.example.x", jpa)
+        src = (base / "common/GlobalExceptionHandler.java").read_text(encoding="utf-8")
+        assert "@ExceptionHandler(Exception.class)" in src and '"Unexpected error"' in src
+        assert ("DataIntegrityViolationException" in src) is jpa  # no spring-dao import without data-jpa
+
+
+def test_generated_controller_test_covers_500_without_leak(project):
+    svc, _ = fake_service(project)
+    run_script(project, GEN_RESOURCE, "shop-service", "Order", "note:String")
+    src = files(svc)["ctest"].read_text()
+    assert "isInternalServerError()" in src and '"Unexpected error"' in src

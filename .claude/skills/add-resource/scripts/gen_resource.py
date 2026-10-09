@@ -120,10 +120,14 @@ def main():
     cap = lambda n: n[0].upper() + n[1:]
 
     # --- entity
-    def column(n):
+    def column(n, t):
         col = snake(n)
-        return f'@Column(name = "{quoted(col)}", nullable = false)' if col in SQL_RESERVED else "@Column(nullable = false)"
-    cols = "\n".join(f"    {column(n)}\n    private {t} {n};\n" for n, t in fields)
+        attrs = [f'name = "{quoted(col)}"'] if col in SQL_RESERVED else []
+        attrs.append("nullable = false")
+        if t == "BigDecimal":
+            attrs += ["precision = 19", "scale = 2"]  # money: matches @Digits(fraction = 2) on the request
+        return f"@Column({', '.join(attrs)})"
+    cols = "\n".join(f"    {column(n, t)}\n    private {t} {n};\n" for n, t in fields)
     acc = "\n".join(f"    public {t} get{cap(n)}() {{ return {n}; }}\n"
                     f"    public void set{cap(n)}({t} {n}) {{ this.{n} = {n}; }}\n" for n, t in fields)
     write(main_dir / "domain" / f"{E}.java", f"""package {pkg}.domain;
@@ -146,10 +150,13 @@ public class {E} {{
 
     # --- DTOs
     def ann(t):
+        if t == "BigDecimal":
+            return "@NotNull @Digits(integer = 17, fraction = 2) "
         return "@NotBlank " if t == "String" else "@NotNull "
     req = ", ".join(f"{ann(t)}{t} {n}" for n, t in fields)
     write(main_dir / "dto" / f"{E}Request.java", f"""package {pkg}.dto;
 
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 {imp}
@@ -343,6 +350,16 @@ class {E}ControllerTest {{
         mvc.perform(get("{path}/99"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }}
+
+    @Test
+    void unexpectedErrorsReturnGeneric500ProblemDetail() throws Exception {{
+        when(service.get(5L)).thenThrow(new IllegalStateException("internal secret detail"));
+        mvc.perform(get("{path}/5"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Unexpected error"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("secret"))));
     }}
 
     @Test
