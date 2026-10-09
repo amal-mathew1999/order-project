@@ -5,3 +5,5 @@ __pycache__/
 .claude/.gate_retries
 .claude/settings.local.json
 .claude/worktrees/
+logs/
+.idea/
