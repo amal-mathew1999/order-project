@@ -66,6 +66,34 @@ class OrderControllerTest {
     }
 
     @Test
+    void createWhenPaymentRejectsReturns502ProblemDetail() throws Exception {
+        when(service.create(any(OrderRequest.class)))
+                .thenThrow(new com.example.order.common.BadGatewayException("Payment service rejected the request", null));
+        mvc.perform(post("/api/v1/orders").contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isBadGateway())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(502));
+    }
+
+    @Test
+    void dataIntegrityViolationReturns409ProblemDetail() throws Exception {
+        when(service.get(1L)).thenThrow(new org.springframework.dao.DataIntegrityViolationException("dup key secret"));
+        mvc.perform(get("/api/v1/orders/1"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Data integrity violation"));
+    }
+
+    @Test
+    void unexpectedErrorReturns500WithoutLeakingMessage() throws Exception {
+        when(service.get(1L)).thenThrow(new IllegalStateException("secret internals"));
+        mvc.perform(get("/api/v1/orders/1"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Unexpected error"));
+    }
+
+    @Test
     void putAndDeleteAreNotSupported() throws Exception {
         mvc.perform(put("/api/v1/orders/1").contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isMethodNotAllowed());
