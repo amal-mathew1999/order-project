@@ -1,6 +1,8 @@
 package com.example.inventory.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "reservations")
@@ -20,7 +22,8 @@ public class Reservation {
     private Integer quantity;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR) // not a native ENUM: ddl-auto never alters ENUM columns
+    @Column(nullable = false, length = 32)
     private ReservationStatus status;
 
     protected Reservation() {

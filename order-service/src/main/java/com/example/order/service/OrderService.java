@@ -122,13 +122,25 @@ public class OrderService {
 
     /** Re-checks PAYMENT_UNKNOWN orders against payment-service; errors are retried on the next run. */
     public void reconcileUnknownPayments() {
-        for (Order o : repository.findByStatus(OrderStatus.PAYMENT_UNKNOWN)) {
+        reconcile(repository.findByStatus(OrderStatus.PAYMENT_UNKNOWN));
+    }
+
+    /** Resolves orders stuck in PENDING (e.g. the process died or a status write failed mid-flow). */
+    public void reconcileStalePending(java.time.Duration olderThan) {
+        reconcile(repository.findStalePending(java.time.Instant.now().minus(olderThan)));
+    }
+
+    private void reconcile(List<Order> orders) {
+        for (Order o : orders) {
             try {
                 Long id = o.getId();
                 List<ChargeResponse> payments = lookup(id);
                 ChargeResponse success = findSuccess(payments, id);
                 if (success != null) {
-                    updater.markConfirmed(id, o.getUnitPrice(), o.getTotalAmount(), success.id());
+                    BigDecimal total = o.getTotalAmount() != null ? o.getTotalAmount() : success.amount();
+                    BigDecimal unitPrice = o.getUnitPrice() != null ? o.getUnitPrice()
+                            : total.divide(BigDecimal.valueOf(o.getQuantity()), 2, java.math.RoundingMode.HALF_UP);
+                    updater.markConfirmed(id, unitPrice, total, success.id());
                 } else {
                     releaseOrFlag(id);
                     updater.markFailed(id, "Payment not found");

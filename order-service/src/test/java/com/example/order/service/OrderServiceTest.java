@@ -346,6 +346,45 @@ class OrderServiceTest {
         verify(inventory, never()).release(any());
     }
 
+    /** PENDING order whose status write failed mid-flow: no prices persisted yet. */
+    private static Order stalePendingOrder() {
+        Order o = new Order();
+        ReflectionTestUtils.setField(o, "id", 1L);
+        o.setQuantity(2);
+        o.setStatus(OrderStatus.PENDING);
+        return o;
+    }
+
+    @Test
+    void staleReconcilerConfirmsPendingOrderFromPaymentAndDerivesPrices() {
+        track();
+        Order o = stalePendingOrder();
+        saved = o;
+        when(repository.findStalePending(any())).thenReturn(List.of(o));
+        when(payment.findByOrderId(1L)).thenReturn(List.of(success()));
+
+        service.reconcileStalePending(java.time.Duration.ofMinutes(2));
+
+        assertThat(o.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        assertThat(o.getTotalAmount()).isEqualByComparingTo(TOTAL);
+        assertThat(o.getUnitPrice()).isEqualByComparingTo(UNIT_PRICE);
+        verify(inventory, never()).release(any());
+    }
+
+    @Test
+    void staleReconcilerReleasesAndFailsPendingOrderWithoutPayment() {
+        track();
+        Order o = stalePendingOrder();
+        saved = o;
+        when(repository.findStalePending(any())).thenReturn(List.of(o));
+        when(payment.findByOrderId(1L)).thenReturn(List.of());
+
+        service.reconcileStalePending(java.time.Duration.ofMinutes(2));
+
+        assertThat(o.getStatus()).isEqualTo(OrderStatus.FAILED);
+        verify(inventory).release(RELEASE);
+    }
+
     @Test
     void getMissingThrows() {
         when(repository.findById(1L)).thenReturn(Optional.empty());

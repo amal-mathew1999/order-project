@@ -2,6 +2,9 @@ package com.example.order.domain;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.time.Instant;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "orders")
@@ -24,8 +27,13 @@ public class Order {
 
     private BigDecimal totalAmount;
 
+    // VARCHAR, not a native MySQL ENUM: ddl-auto never alters an ENUM column, so new statuses would be rejected
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(length = 32)
     private OrderStatus status;
+
+    private Instant createdAt;
 
     private Long paymentId;
 
@@ -34,7 +42,17 @@ public class Order {
     @Column(nullable = false)
     private boolean releasePending;
 
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
+
     public Long getId() { return id; }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 
     public Long getCustomerId() { return customerId; }
     public void setCustomerId(Long customerId) { this.customerId = customerId; }

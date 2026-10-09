@@ -12,6 +12,9 @@ Each `*-service/` folder is an independent Maven project (Spring Boot 4.1.1, Spr
 - Package by layer: `domain`, `dto`, `repository`, `service`, `web`, `common` under `com.example.<svc>`.
 - Constructor injection only. DTOs are Java records. Entities never leave the service layer.
 - REST paths are `/api/v1/<plural-kebab>`. Errors go through `common/GlobalExceptionHandler` (ProblemDetail).
+- Enums in entities: `@Enumerated(EnumType.STRING)` + `@JdbcTypeCode(SqlTypes.VARCHAR)` + `@Column(length = 32)`. Hibernate's default is a native MySQL `ENUM` column, which `ddl-auto: update` never alters, so adding a value breaks existing databases.
+- Money: `BigDecimal` with `@Digits(fraction = 2)` and `precision = 19, scale = 2`.
+- Cross-service flows: no remote calls inside DB transactions; every compensation must be idempotent and retried (no fire-and-forget); a scheduled reconciler resolves any state a crash can leave behind.
 - Business rules live in `@Service` classes (`@Transactional(readOnly = true)` at class level, `@Transactional` on writes).
 - Cross-service: reference by ID only, no shared tables, set timeouts on HTTP clients.
 - Tests: `@WebMvcTest` (`org.springframework.boot.webmvc.test.autoconfigure`) + `@MockitoBean` for controllers; plain Mockito for services.
