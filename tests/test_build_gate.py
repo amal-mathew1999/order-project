@@ -1,3 +1,5 @@
+import json
+
 from conftest import BUILD_GATE, run_hook
 
 MAVEN_FAIL = [
@@ -14,10 +16,10 @@ def fake_maven(project, svc, exit_code, lines=()):
     d = project / svc
     d.mkdir(parents=True, exist_ok=True)
     (d / "pom.xml").write_text("<project/>")
-    echo_cmd = "".join(f"echo {l.replace('[', '^[').replace(']', '^]') or '.'}\r\n" for l in lines)
-    (d / "mvnw.cmd").write_text(f"@echo off\r\n{echo_cmd}exit /b {exit_code}\r\n")
+    (d / "out.txt").write_text("\n".join(lines) + "\n" if lines else "")
+    (d / "mvnw.cmd").write_text(f"@echo off\r\ntype out.txt\r\nexit /b {exit_code}\r\n")
     sh = d / "mvnw"
-    sh.write_text("#!/bin/sh\n" + "".join(f"echo '{l}'\n" for l in lines) + f"exit {exit_code}\n")
+    sh.write_text(f"#!/bin/sh\ncat out.txt\nexit {exit_code}\n")
     sh.chmod(0o755)
 
 
@@ -76,9 +78,21 @@ def test_silent_failure_still_reported(project):
 def test_gives_up_after_three_retries(project):
     fake_maven(project, "bad-service", 1, MAVEN_FAIL)
     mark_dirty(project, "bad-service")
-    codes = [gate(project, active=i > 0).returncode for i in range(4)]
-    assert codes == [2, 2, 2, 0]
+    results = [gate(project, active=i > 0) for i in range(4)]
+    assert [r.returncode for r in results] == [2, 2, 2, 0]
+    assert "final attempt" in results[2].stderr
+    assert json.loads(results[3].stdout)["systemMessage"].startswith("Build gate: tests still failing")
     assert not (project / ".claude/.dirty").exists()
+
+
+def test_fix_on_last_attempt_is_verified(project):
+    fake_maven(project, "bad-service", 1, MAVEN_FAIL)
+    mark_dirty(project, "bad-service")
+    for i in range(3):
+        gate(project, active=i > 0)
+    fake_maven(project, "bad-service", 0)  # Claude fixed it on the final attempt
+    r = gate(project, active=True)
+    assert r.returncode == 0 and not r.stdout  # passes, no "gave up" message
 
 
 def test_fresh_stop_resets_retry_counter(project):

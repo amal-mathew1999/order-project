@@ -14,6 +14,7 @@ def files(svc, e="Order"):
         "repo": m / f"repository/{e}Repository.java", "svc": m / f"service/{e}Service.java",
         "ctrl": m / f"web/{e}Controller.java",
         "ctest": t / f"web/{e}ControllerTest.java", "stest": t / f"service/{e}ServiceTest.java",
+        "rtest": t / f"repository/{e}RepositoryTest.java",
     }
 
 

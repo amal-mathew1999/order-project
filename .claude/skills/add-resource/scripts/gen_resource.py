@@ -1,6 +1,6 @@
 """Generate a full CRUD vertical slice (entity, DTOs, repository, service, controller, tests).
 
-Usage: python gen_resource.py <service-dir> <Entity> "field:Type,field:Type" [--table name]
+Usage: python gen_resource.py <service-dir> <Entity> "field:Type,field:Type" [--table name] [--plural word]
 Types: String Long Integer Double BigDecimal Boolean LocalDate Instant
 """
 import argparse, re, sys
@@ -19,17 +19,70 @@ JAVA_VAL = {"String": '"sample"', "Long": "1L", "Integer": "1", "Double": "1.5",
             "Instant": 'Instant.parse("2026-01-01T00:00:00Z")'}
 
 
+JAVA_KEYWORDS = set("""abstract assert boolean break byte case catch char class const continue default do double
+else enum extends final finally float for goto if implements import instanceof int interface long native new
+package private protected public return short static strictfp super switch synchronized this throw throws
+transient try void volatile while true false null record var yield sealed permits""".split())
+# simple names imported by the generated files; an entity with one of these names would not compile
+IMPORTED = set("""Entity Table Id Column GeneratedValue GenerationType NotBlank NotNull JpaRepository NotFoundException
+List PageRequest Service Transactional Valid Max Min URI ResponseEntity Test Autowired WebMvcTest MediaType
+MockitoBean MockMvc Optional ExtendWith InjectMocks Mock MockitoExtension SpringBootTest BigDecimal LocalDate
+Instant Object String Long Integer Double Boolean Override""".split())
+# H2/MySQL reserved words; such columns/tables are quoted so DDL does not fail
+SQL_RESERVED = set("""all and any array as asymmetric authorization between both case cast check constraint cross
+current_date current_time current_timestamp current_user day default distinct else end except exists false fetch
+for foreign from full group groups having hour if ilike in inner intersect interval is join key leading left like
+limit localtime localtimestamp minus minute month natural not null offset on or order over partition primary
+qualify range regexp right row rownum rows second select session_user set some symmetric system_user table to top
+trailing true union unique unknown user using value values when where window with year index desc asc
+""".split())
+
+
 def snake(s):
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", s).lower()
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)  # URLMapping -> URL_Mapping
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
+
+
+def pluralize(word):
+    if re.search(r"[^aeiou]y$", word):
+        return word[:-1] + "ies"
+    if re.search(r"(s|x|z|ch|sh)$", word):
+        return word + "es"
+    return word + "s"
+
+
+def quoted(name):
+    return f"`{name}`" if name in SQL_RESERVED else name
 
 
 def write(path, text):
+    rel = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
     if path.exists():
-        print(f"skip (exists) {path.relative_to(ROOT)}")
+        print(f"skip (exists) {rel}")
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
-    print(f"wrote {path.relative_to(ROOT)}")
+    path.write_text(text, encoding="utf-8")
+    print(f"wrote {rel}")
+
+
+def parse_fields(spec):
+    fields, seen = [], set()
+    for part in spec.split(","):
+        m = re.fullmatch(r"\s*([a-z][A-Za-z0-9]*)\s*:\s*([A-Za-z]+)\s*", part)
+        if not m:
+            sys.exit(f"bad field spec '{part}': expected name:Type, e.g. \"name:String,price:BigDecimal\"")
+        n, t = m.groups()
+        if n == "id":
+            sys.exit("'id' is generated automatically; remove it from the field list")
+        if n in JAVA_KEYWORDS:
+            sys.exit(f"field name '{n}' is a Java keyword")
+        if n in seen:
+            sys.exit(f"duplicate field '{n}'")
+        if t not in TYPES:
+            sys.exit(f"unsupported type {t}; use one of {', '.join(TYPES)}")
+        seen.add(n)
+        fields.append((n, t))
+    return fields
 
 
 def main():
@@ -38,33 +91,39 @@ def main():
     ap.add_argument("entity")
     ap.add_argument("fields")
     ap.add_argument("--table")
+    ap.add_argument("--plural", help="URL/table plural if the default rule is wrong, e.g. --plural people")
     a = ap.parse_args()
 
-    svc = ROOT / a.service
+    E = a.entity
+    if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", E) or E.lower() in JAVA_KEYWORDS:
+        sys.exit(f"entity '{E}' must be an UpperCamelCase Java identifier")
+    if E in IMPORTED:
+        sys.exit(f"entity '{E}' clashes with a class the generated code imports; pick another name")
+    fields = parse_fields(a.fields)
+
+    svc = (ROOT / a.service).resolve()
+    if not svc.is_relative_to(ROOT.resolve()) or svc == ROOT.resolve():
+        sys.exit(f"{a.service} must be a service folder inside {ROOT}")
     app = next((svc / "src/main/java").rglob("*Application.java"), None)
     if not app:
         sys.exit(f"no *Application.java under {a.service}; run new-service first")
-    pkg = app.read_text().split("package ", 1)[1].split(";", 1)[0]
+    pkg = app.read_text(encoding="utf-8").split("package ", 1)[1].split(";", 1)[0]
     pdir = Path(*pkg.split("."))
     main_dir, test_dir = svc / "src/main/java" / pdir, svc / "src/test/java" / pdir
 
-    E = a.entity
     v = E[0].lower() + E[1:]
-    plural = snake(E) + "s"
-    table = a.table or plural
+    plural = snake(a.plural) if a.plural else pluralize(snake(E))
+    table = quoted(a.table or plural)
     path = "/api/v1/" + plural.replace("_", "-")
-    fields = []
-    for part in a.fields.split(","):
-        n, t = (x.strip() for x in part.split(":"))
-        if t not in TYPES:
-            sys.exit(f"unsupported type {t}; use one of {', '.join(TYPES)}")
-        fields.append((n, t))
     imports = sorted({TYPES[t][0] for _, t in fields if TYPES[t][0]})
     imp = "".join(f"import {i};\n" for i in imports)
     cap = lambda n: n[0].upper() + n[1:]
 
     # --- entity
-    cols = "\n".join(f"    @Column(nullable = false)\n    private {t} {n};\n" for n, t in fields)
+    def column(n):
+        col = snake(n)
+        return f'@Column(name = "{quoted(col)}", nullable = false)' if col in SQL_RESERVED else "@Column(nullable = false)"
+    cols = "\n".join(f"    {column(n)}\n    private {t} {n};\n" for n, t in fields)
     acc = "\n".join(f"    public {t} get{cap(n)}() {{ return {n}; }}\n"
                     f"    public void set{cap(n)}({t} {n}) {{ this.{n} = {n}; }}\n" for n, t in fields)
     write(main_dir / "domain" / f"{E}.java", f"""package {pkg}.domain;
@@ -281,7 +340,49 @@ class {E}ControllerTest {{
     @Test
     void getMissingReturns404() throws Exception {{
         when(service.get(99L)).thenThrow(new NotFoundException("{E}", 99L));
-        mvc.perform(get("{path}/99")).andExpect(status().isNotFound());
+        mvc.perform(get("{path}/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }}
+
+    @Test
+    void badRequestsReturnProblemDetail() throws Exception {{
+        mvc.perform(get("{path}/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+        mvc.perform(get("{path}").param("size", "1000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+        mvc.perform(post("{path}").contentType(MediaType.APPLICATION_JSON).content("{{bad"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }}
+}}
+""")
+    setters = "\n".join(f"        e.set{cap(n)}({JAVA_VAL[t]});" for n, t in fields)
+    write(test_dir / "repository" / f"{E}RepositoryTest.java", f"""package {pkg}.repository;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import {pkg}.domain.{E};
+{imp}import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
+
+/** Real schema round-trip: catches DDL problems (reserved words, column types) that mocks cannot. */
+@SpringBootTest
+@Transactional
+class {E}RepositoryTest {{
+
+    @Autowired {E}Repository repository;
+
+    @Test
+    void savesAndReloads() {{
+        {E} e = new {E}();
+{setters}
+        Long id = repository.saveAndFlush(e).getId();
+        assertThat(repository.findById(id)).isPresent();
     }}
 }}
 """)
@@ -324,6 +425,8 @@ class {E}ServiceTest {{
     }}
 }}
 """)
+    with (ROOT / ".claude" / ".dirty").open("a", encoding="utf-8") as f:
+        f.write(svc.relative_to(ROOT.resolve()).parts[0] + "\n")
 
 
 if __name__ == "__main__":

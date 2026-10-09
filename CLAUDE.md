@@ -1,6 +1,6 @@
 # Spring Boot microservices
 
-Each `*-service/` folder is an independent Maven project (Spring Boot 4.x, Java 17, Maven wrapper, H2 for dev). There is no parent pom, and each service owns its own database.
+Each `*-service/` folder is an independent Maven project (Spring Boot 4.1.1, Spring Cloud, Java 17, Maven wrapper). There is no parent pom. Each service owns its own MySQL database; tests use H2. Services register with Eureka (`discovery-service`, port 8761) and are reached through `gateway-service` (port 8080).
 
 ## Workflow (always)
 1. Design: use the `service-architect` agent → service list + generator commands.
@@ -18,8 +18,8 @@ Each `*-service/` folder is an independent Maven project (Spring Boot 4.x, Java 
 - Build and test: `cd <svc> && ./mvnw -q -B test`.
 
 ## Automatic guards (hooks)
-- After each edit: a Java lint rejects field injection, System.out, printStackTrace, empty catch blocks, hard-coded secrets, and controllers that import entities.
-- On stop: `mvnw test` runs for every service edited in that turn. A failure blocks the stop (up to 3 retries).
+- After each Edit/Write of a `.java` file, a lint flags field or setter injection, System.out, printStackTrace, empty catch blocks, hard-coded secrets and controllers that import `@Entity` classes. The edit is already applied, so Claude must fix what it flags. Test sources may use field injection; every other rule still applies.
+- On stop, `mvnw test` runs for every service that was edited or generated in that turn. A failure blocks the stop with a compact digest. After 3 fix attempts the failure is reported to the user.
 
 ## Token rules
 Don't read generated files unless you are changing them. Don't paste code back in summaries; give file paths only.

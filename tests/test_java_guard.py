@@ -29,6 +29,7 @@ MAIN = "x-service/src/main/java/com/example/x/Foo.java"
     ("import com.example.x.domain.Order;\n@RestController\nclass Foo {}", "controller imports a JPA entity"),
 ])
 def test_violations_block_with_exit_2(project, body, message):
+    write_java(project, "x-service/src/main/java/com/example/x/domain/Order.java", "@Entity class Order {}")
     r = guard(project, write_java(project, MAIN, body))
     assert r.returncode == 2
     assert message in r.stderr
