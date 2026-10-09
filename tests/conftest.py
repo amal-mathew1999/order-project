@@ -14,7 +14,7 @@ BUILD_GATE = ".claude/hooks/build_gate.py"
 def project(tmp_path):
     """Isolated copy of the harness; scripts resolve ROOT from their own location, so they act on tmp_path."""
     shutil.copytree(REPO / ".claude", tmp_path / ".claude",
-                    ignore=shutil.ignore_patterns(".dirty", ".gate_retries", "__pycache__"))
+                    ignore=shutil.ignore_patterns(".dirty", ".gate_retries", "__pycache__", "worktrees"))
     return tmp_path
 
 

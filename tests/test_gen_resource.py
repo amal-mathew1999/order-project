@@ -35,6 +35,7 @@ def test_entity_table_and_columns(project):
     assert '@Table(name = "orders")' in src  # "order" is a reserved SQL word
     assert "import java.math.BigDecimal;" in src and "import java.time.Instant;" in src
     assert "private Long customerId;" in src and "public void setTotal(BigDecimal total)" in src
+    assert "@Column(nullable = false, precision = 19, scale = 2)\n    private BigDecimal total;" in src
 
 
 def test_table_override(project):
@@ -48,7 +49,8 @@ def test_request_validation_annotations(project):
     gen(project)
     src = files(svc)["req"].read_text()
     assert "@NotBlank String note" in src
-    assert "@NotNull Long customerId" in src and "@NotNull BigDecimal total" in src
+    assert "@NotNull Long customerId" in src
+    assert "@NotNull @Digits(integer = 17, fraction = 2) BigDecimal total" in src  # money: 2 decimals
 
 
 def test_controller_contract(project):
