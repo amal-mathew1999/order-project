@@ -4,4 +4,3 @@ __pycache__/
 .claude/.dirty
 .claude/.gate_retries
 .claude/settings.local.json
-*-service/

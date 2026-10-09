@@ -1,48 +1,89 @@
 """Stop hook: run `mvnw test` only for services edited this turn. Blocks the stop with a compact error digest."""
-import json, os, subprocess, sys
+import json, os, re, subprocess, sys
 from pathlib import Path
 
 MAX_RETRIES = 3
-root = Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
-dirty, retries = root / ".claude" / ".dirty", root / ".claude" / ".gate_retries"
-data = json.load(sys.stdin)
+TIMEOUT = 540  # stay under the 600 s hook timeout in settings.json
+NOISE = re.compile(r"^\[ERROR\]\s*(Re-run Maven|For more information|\[Help|-> \[Help|See |To see the full stack trace"
+                   r"|Failed to execute goal|$)")
+FAILURE_MARK = re.compile(r"<<< (FAILURE|ERROR)!")
 
-if not dirty.exists():
-    sys.exit(0)
-services = sorted({s for s in dirty.read_text().split() if (root / s / "pom.xml").exists()})
-if not services:
-    dirty.unlink()
-    sys.exit(0)
 
-n = int(retries.read_text()) if data.get("stop_hook_active") and retries.exists() else 0
-if n >= MAX_RETRIES:
-    retries.unlink(missing_ok=True)
-    dirty.unlink()
-    print(f"build gate gave up after {MAX_RETRIES} attempts; report the failure to the user", file=sys.stderr)
-    sys.exit(0)
+def digest(output, svc_dir):
+    lines, seen, follow = [], set(), 0
+    for line in output.splitlines():
+        for prefix in ("/" + svc_dir.as_posix(), svc_dir.as_posix(), str(svc_dir)):
+            line = line.replace(prefix, "")
+        line = line.rstrip()
+        if follow and line and not line.lstrip().startswith("at "):
+            follow -= 1
+            keep = True
+        else:
+            keep = ("ERROR" in line or "FAIL" in line) and not NOISE.match(line)
+        if FAILURE_MARK.search(line):
+            follow = 3  # the assertion message follows the failure marker
+        if keep and line not in seen:
+            seen.add(line)
+            lines.append(line)
+    return "\n".join(lines[:25])
 
-failures = []
-for s in services:
-    mvnw = ["cmd", "/c", str(root / s / "mvnw.cmd")] if os.name == "nt" else [str(root / s / "mvnw")]
-    r = subprocess.run(mvnw + ["-q", "-B", "test"], cwd=root / s, capture_output=True, text=True)
-    if r.returncode and not (r.stdout + r.stderr).strip():
-        failures.append(f"[{s}] mvnw exited {r.returncode} with no output")
-        continue
-    if r.returncode:
-        noise = ("re-run maven", "[help", "for more information", "see ", "dump files", "failed to execute goal")
-        lines, seen = [], set()
-        for l in (r.stdout + r.stderr).splitlines():
-            l = l.replace(str(root / s), "").strip()
-            if ("ERROR" in l or "FAIL" in l or "expected" in l) and l.strip("[ERROR] ") \
-                    and not any(x in l.lower() for x in noise) and l not in seen:
-                seen.add(l)
-                lines.append(l)
-        failures.append(f"[{s}]\n" + "\n".join(lines[:20]))
 
-if failures:
+def build(root, svc):
+    d = root / svc
+    wrapper = d / ("mvnw.cmd" if os.name == "nt" else "mvnw")
+    if not wrapper.exists():
+        return f"[{svc}] Maven wrapper {wrapper.name} missing; regenerate the service or restore the wrapper"
+    cmd = (["cmd", "/c", r".\mvnw.cmd"] if os.name == "nt" else ["./mvnw"]) + ["-q", "-B", "test"]
+    try:
+        r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return f"[{svc}] mvnw test timed out after {TIMEOUT}s"
+    if r.returncode == 0:
+        return None
+    out = r.stdout + r.stderr
+    return f"[{svc}]\n" + (digest(out, d) if out.strip() else f"mvnw exited {r.returncode} with no output")
+
+
+def main():
+    root = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path(__file__).resolve().parents[2]).resolve()
+    dirty, retries = root / ".claude" / ".dirty", root / ".claude" / ".gate_retries"
+    try:
+        data = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        data = {}
+
+    if not dirty.exists():
+        return 0
+    services = sorted({s for s in dirty.read_text(encoding="utf-8").split() if (root / s / "pom.xml").exists()})
+    if not services:
+        dirty.unlink()
+        return 0
+
+    try:
+        n = int(retries.read_text()) if data.get("stop_hook_active") and retries.exists() else 0
+    except ValueError:
+        n = 0
+
+    failures = [f for f in (build(root, s) for s in services) if f]
+    if not failures:
+        dirty.unlink()
+        retries.unlink(missing_ok=True)
+        return 0
+
+    if n >= MAX_RETRIES:
+        dirty.unlink()
+        retries.unlink(missing_ok=True)
+        print(json.dumps({"systemMessage": f"Build gate: tests still failing after {MAX_RETRIES} fix attempts.\n"
+                                           + "\n".join(failures)}))
+        return 0
+
     retries.write_text(str(n + 1))
-    print("Build/tests failed - fix before finishing:\n" + "\n".join(failures), file=sys.stderr)
-    sys.exit(2)
+    last = " This is the final attempt; if it still fails, explain the failure to the user." \
+        if n + 1 == MAX_RETRIES else ""
+    print("Build/tests failed - fix before finishing." + last + "\n" + "\n".join(failures), file=sys.stderr)
+    return 2
 
-dirty.unlink()
-retries.unlink(missing_ok=True)
+
+if __name__ == "__main__":
+    sys.exit(main())

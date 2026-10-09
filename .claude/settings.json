@@ -3,11 +3,13 @@
     "allow": [
       "Bash(python .claude/skills/*)",
       "Bash(./mvnw *)",
-      "Bash(mvnw.cmd *)",
-      "Bash(cd * && ./mvnw *)"
+      "Bash(./mvnw.cmd *)",
+      "Bash(mvnw.cmd *)"
     ],
     "deny": [
       "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Bash(cat *.env*)",
       "Edit(**/target/**)",
       "Write(**/target/**)",
       "Edit(**/mvnw*)",
@@ -19,14 +21,22 @@
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/java_guard.py\"", "timeout": 10 }
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/java_guard.py\"",
+            "timeout": 10
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/build_gate.py\"", "timeout": 600 }
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/build_gate.py\"",
+            "timeout": 600
+          }
         ]
       }
     ]
