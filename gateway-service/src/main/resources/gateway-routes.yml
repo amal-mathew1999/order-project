@@ -1,0 +1,18 @@
+spring:
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+            - id: order-service
+              uri: lb://order-service
+              predicates:
+                - Path=/api/v1/orders/**
+            - id: inventory-service
+              uri: lb://inventory-service
+              predicates:
+                - Path=/api/v1/inventory/**,/api/v1/inventory-items/**
+            - id: payment-service
+              uri: lb://payment-service
+              predicates:
+                - Path=/api/v1/payments/**
