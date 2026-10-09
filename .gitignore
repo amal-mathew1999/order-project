@@ -1,0 +1,7 @@
+target/
+__pycache__/
+.pytest_cache/
+.claude/.dirty
+.claude/.gate_retries
+.claude/settings.local.json
+*-service/
