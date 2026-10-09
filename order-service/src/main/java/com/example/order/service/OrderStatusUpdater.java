@@ -65,6 +65,23 @@ public class OrderStatusUpdater {
         return repository.save(e);
     }
 
+    @Transactional
+    public Order markPaymentUnknown(Long id, BigDecimal unitPrice, BigDecimal total, String reason) {
+        Order e = find(id);
+        e.setUnitPrice(unitPrice);
+        e.setTotalAmount(total);
+        e.setStatus(OrderStatus.PAYMENT_UNKNOWN);
+        e.setFailureReason(reason);
+        return repository.save(e);
+    }
+
+    @Transactional
+    public Order setReleasePending(Long id, boolean pending) {
+        Order e = find(id);
+        e.setReleasePending(pending);
+        return repository.save(e);
+    }
+
     private Order find(Long id) {
         return repository.findById(id).orElseThrow(() -> new NotFoundException("Order", id));
     }

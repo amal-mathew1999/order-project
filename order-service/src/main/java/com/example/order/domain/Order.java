@@ -31,6 +31,9 @@ public class Order {
 
     private String failureReason;
 
+    @Column(nullable = false)
+    private boolean releasePending;
+
     public Long getId() { return id; }
 
     public Long getCustomerId() { return customerId; }
@@ -56,4 +59,7 @@ public class Order {
 
     public String getFailureReason() { return failureReason; }
     public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
+
+    public boolean isReleasePending() { return releasePending; }
+    public void setReleasePending(boolean releasePending) { this.releasePending = releasePending; }
 }
